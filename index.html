@@ -1,0 +1,697 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>驚喜咖啡遊戲</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .modal-enter {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+    .modal-enter-active {
+      opacity: 1;
+      transform: scale(1);
+      transition: opacity 300ms, transform 300ms;
+    }
+    .community-posts {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .community-input {
+      position: relative;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body className="bg-pink-100 flex justify-center items-center min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // 語言配置
+    const translations = {
+      'zh-TW': {
+        title: '驚喜咖啡遊戲',
+        points: '點數',
+        spinButton: '點擊旋轉',
+        spinning: '旋轉中...',
+        rewardsPage: '兌換獎勵',
+        avatarPage: '換咖啡裝扮',
+        communityPage: '咖啡社群',
+        happyHour: '快樂時光：點數兌換限時 5 分鐘調整！',
+        remainingTime: '剩餘時間',
+        rewardReceived: '獲得 {reward}！',
+        congrats: '恭喜！',
+        close: '關閉',
+        currentPoints: '當前點數',
+        redeem: '兌換',
+        insufficientPoints: '點數不足',
+        redeemed: '恭喜已成功兌換',
+        redeemedItem: '兌換 {item}',
+        shareLine: '分享到 LINE',
+        copyText: '複製文字',
+        copied: '已複製分享內容：{text}',
+        selectAvatar: '選擇咖啡裝扮',
+        select: '選擇',
+        backToHome: '返回首頁',
+        communityHeader: '看看其他人分享了什麼！',
+        shareAvatar: '分享我的新造型',
+        communityPrompt: '你可以分享一句話給今日挑戰！',
+        sameReward: '你和 {percent}% 的玩家選擇了相同的獎勵！',
+        friendsRedeemed: '你的 {count} 位朋友已兌換此獎勵，要分享你的成就嗎？',
+        postSuccess: '分享成功！',
+        postEmpty: '請輸入內容！',
+        rewards: [
+          '點數 1 點',
+          '點數 2 點',
+          '點數 3 點',
+          '點數 4 點',
+          '點數 5 點'
+        ],
+        rewardItems: [
+          { name: '中杯咖啡券', points: 5 },
+          { name: '限量咖啡杯', points: 10 },
+          { name: '中杯升級大杯', points: 5 },
+          { name: '手工麵包', points: 8 }
+        ],
+        happyHourDiscount: '快樂時光！兌換點數 8 折',
+        pointsNeeded: '需要: {points} 點{happyHour}',
+        happyHourOriginal: ' (原 {original} 點)'
+      },
+      'en': {
+        title: 'Surprise Coffee Game',
+        points: 'Points',
+        spinButton: 'Spin',
+        spinning: 'Spinning...',
+        rewardsPage: 'Redeem Rewards',
+        avatarPage: 'Change Coffee Avatar',
+        communityPage: 'Coffee Community',
+        happyHour: 'Happy Hour: Point redemption discount for 5 minutes!',
+        remainingTime: 'Time Remaining',
+        rewardReceived: 'Received {reward}!',
+        congrats: 'Congratulations!',
+        close: 'Close',
+        currentPoints: 'Current Points',
+        redeem: 'Redeem',
+        insufficientPoints: 'Insufficient Points',
+        redeemed: 'Successfully Redeemed',
+        redeemedItem: 'Redeemed {item}',
+        shareLine: 'Share to LINE',
+        copyText: 'Copy Text',
+        copied: 'Copied share content: {text}',
+        selectAvatar: 'Select Coffee Avatar',
+        select: 'Select',
+        backToHome: 'Back to Home',
+        communityHeader: 'See what others are sharing!',
+        shareAvatar: 'Share my new avatar',
+        communityPrompt: 'Share a message for today’s challenge!',
+        sameReward: 'You and {percent}% of players chose the same reward!',
+        friendsRedeemed: '{count} of your friends have redeemed this reward. Want to share yours too?',
+        postSuccess: 'Posted successfully!',
+        postEmpty: 'Please enter a message!',
+        rewards: [
+          '1 Point',
+          '2 Points',
+          '3 Points',
+          '4 Points',
+          '5 Points'
+        ],
+        rewardItems: [
+          { name: 'Medium Coffee Voucher', points: 5 },
+          { name: 'Limited Coffee Mug', points: 10 },
+          { name: 'Medium to Large Upgrade', points: 5 },
+          { name: 'Artisan Bread', points: 8 }
+        ],
+        happyHourDiscount: 'Happy Hour! 20% off point redemption',
+        pointsNeeded: 'Required: {points} points{happyHour}',
+        happyHourOriginal: ' (originally {original} points)'
+      }
+    };
+
+    const avatars = [
+      { name: '美式咖啡', nameEn: 'Americano', url: 'https://i.imgur.com/Ce4Sdng.png' },
+      { name: '抹茶咖啡', nameEn: 'Matcha Coffee', url: 'https://i.imgur.com/5BkCFxJ.png' },
+      { name: '星冰樂', nameEn: 'Frappuccino', url: 'https://i.imgur.com/GmwKqxh.png' },
+      { name: '白巧克力咖啡', nameEn: 'White Chocolate Coffee', url: 'https://i.imgur.com/IkDd9Ye.png' }
+    ];
+    const rewardImage = 'https://i.imgur.com/dXUkOla.png';
+
+    // 模擬貼文牆內容
+    const communityPosts = [
+      { user: '咖啡控', userEn: 'Coffee Lover', message: '我抽到 5 點！太幸運了！☕', messageEn: 'I got 5 Points! So lucky! ☕' },
+      { user: '小明', userEn: 'Xiao Ming', message: '兌換了中杯咖啡券，超開心！', messageEn: 'Redeemed a Medium Coffee Voucher, so excited!' },
+      { user: '咖啡達人', userEn: 'Coffee Master', message: '我的抹茶咖啡造型超讚！', messageEn: 'My Matcha Coffee avatar is awesome!' }
+    ];
+
+    const App = () => {
+      const [page, setPage] = useState('home');
+      const [points, setPoints] = useState(0);
+      const [showModal, setShowModal] = useState(false);
+      const [modalReward, setModalReward] = useState(null);
+      const [showRedeemModal, setShowRedeemModal] = useState(false);
+      const [redeemedItem, setRedeemedItem] = useState(null);
+      const [showInsufficientModal, setShowInsufficientModal] = useState(false);
+      const [showAvatarModal, setShowAvatarModal] = useState(false);
+      const [avatar, setAvatar] = useState(avatars[0]);
+      const [happyHour, setHappyHour] = useState(false);
+      const [happyHourTime, setHappyHourTime] = useState(0);
+      const [language, setLanguage] = useState('zh-TW');
+
+      const t = translations[language];
+      const languageToggleText = language === 'zh-TW' ? 'English' : '中文繁體';
+
+      // 切換語言
+      const toggleLanguage = () => {
+        setLanguage(language === 'zh-TW' ? 'en' : 'zh-TW');
+      };
+
+      // 進入頁面後 20 秒啟動快樂時光
+      useEffect(() => {
+        const timer = setTimeout(() => {
+          if (!happyHour) {
+            setHappyHour(true);
+            setHappyHourTime(300); // 5 分鐘
+          }
+        }, 20000); // 20 秒
+        return () => clearTimeout(timer);
+      }, []);
+
+      // 倒計時邏輯
+      useEffect(() => {
+        if (happyHour && happyHourTime > 0) {
+          const timer = setInterval(() => {
+            setHappyHourTime((prev) => {
+              if (prev <= 1) {
+                setHappyHour(false);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+          return () => clearInterval(timer);
+        }
+      }, [happyHour, happyHourTime]);
+
+      // 格式化時間（MM:SS）
+      const formatTime = (seconds) => {
+        const minutes = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      };
+
+      // 分享到 LINE
+      const shareToLine = (item, type = 'reward') => {
+        const shareText = type === 'avatar'
+          ? `${language === 'zh-TW' ? '🎉 我換了新咖啡造型：' : '🎉 I got a new coffee avatar: '}${language === 'zh-TW' ? item.name : item.nameEn} ☕ ${window.location.href}`
+          : `${language === 'zh-TW' ? '🎉' : '🎉'} ${t.redeemedItem.replace('{item}', item.name)} ☕ ${window.location.href}`;
+        window.open(`https://line.me/R/msg/text/?${encodeURIComponent(shareText)}`, '_blank');
+      };
+
+      // 複製文字
+      const copyText = (item, type = 'reward') => {
+        const shareText = type === 'avatar'
+          ? `${language === 'zh-TW' ? '我換了新咖啡造型：' : 'I got a new coffee avatar: '}${language === 'zh-TW' ? item.name : item.nameEn} ☕`
+          : t.redeemedItem.replace('{item}', item.name);
+        if (navigator.share) {
+          fetch(rewardImage)
+            .then(response => response.blob())
+            .then(blob => {
+              const file = new File([blob], 'reward.png', { type: 'image/png' });
+              navigator.share({
+                title: t.title,
+                text: shareText,
+                url: window.location.href,
+                files: [file]
+              }).catch(() => {
+                navigator.clipboard.writeText(shareText + ' ' + window.location.href);
+                alert(t.copied.replace('{text}', shareText + ' ' + window.location.href));
+              });
+            });
+        } else {
+          navigator.clipboard.writeText(shareText + ' ' + window.location.href);
+          alert(t.copied.replace('{text}', shareText + ' ' + window.location.href));
+        }
+      };
+
+      const HomePage = () => {
+        const [spinning, setSpinning] = useState(false);
+        const [reward, setReward] = useState(null);
+        const canvasRef = useRef(null);
+        const [angle, setAngle] = useState(0);
+
+        useEffect(() => {
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext('2d');
+          const center = canvas.width / 2;
+          const radius = canvas.width / 2;
+          const slice = (2 * Math.PI) / t.rewards.length;
+          const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFD166', '#F94144'];
+
+          t.rewards.forEach((reward, i) => {
+            ctx.beginPath();
+            ctx.moveTo(center, center);
+            ctx.arc(center, center, radius, i * slice, (i + 1) * slice);
+            ctx.fillStyle = colors[i];
+            ctx.fill();
+            ctx.save();
+            ctx.translate(center, center);
+            ctx.rotate(i * slice + slice / 2);
+            ctx.fillStyle = 'white';
+            ctx.font = '14px sans-serif';
+            ctx.fillText(reward, radius / 2, 0);
+            ctx.restore();
+          });
+
+          ctx.beginPath();
+          ctx.moveTo(center, center - 20);
+          ctx.lineTo(center - 10, center);
+          ctx.lineTo(center + 10, center);
+          ctx.closePath();
+          ctx.fillStyle = 'black';
+          ctx.fill();
+        }, [language]);
+
+        const spinWheel = () => {
+          if (spinning) return;
+          setSpinning(true);
+          const randomIndex = Math.floor(Math.random() * t.rewards.length);
+          const sliceAngle = 360 / t.rewards.length;
+          const randomAngle = randomIndex * sliceAngle + Math.random() * sliceAngle;
+          const totalAngle = randomAngle + 360 * 5;
+          let currentAngle = 0;
+
+          const spinInterval = setInterval(() => {
+            currentAngle += 10;
+            setAngle(currentAngle % 360);
+            if (currentAngle >= totalAngle) {
+              clearInterval(spinInterval);
+              const earnedReward = t.rewards[randomIndex];
+              setReward(earnedReward);
+              setModalReward(earnedReward);
+              setShowModal(true);
+              const earnedPoints = parseInt(earnedReward.split(' ')[language === 'zh-TW' ? 1 : 0]);
+              setPoints((prev) => prev + earnedPoints);
+              setSpinning(false);
+            }
+          }, 20);
+        };
+
+        return (
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full text-center font-sans relative">
+            <button
+              onClick={toggleLanguage}
+              className="absolute top-2 right-2 text-sm px-2 py-1 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+            >
+              {languageToggleText}
+            </button>
+            <h1 className="text-3xl font-bold mb-4 text-pink-600">{t.title}</h1>
+            <div className="flex items-center justify-center mb-4">
+              <img
+                src={avatar.url}
+                alt={language === 'zh-TW' ? avatar.name : avatar.nameEn}
+                className="w-12 h-12 rounded-full mr-2"
+              />
+              <p className="text-lg">{t.points}: {points}</p>
+            </div>
+            {happyHour && (
+              <div className="mb-4 p-2 bg-yellow-100 rounded-md">
+                <p className="text-lg font-bold text-pink-600">{t.happyHour}</p>
+                <p className="text-sm">{t.remainingTime}: {formatTime(happyHourTime)}</p>
+              </div>
+            )}
+            <canvas
+              ref={canvasRef}
+              className="mx-auto"
+              width="300"
+              height="300"
+              style={{ transform: `rotate(${angle}deg)` }}
+            ></canvas>
+            <button
+              onClick={spinWheel}
+              disabled={spinning}
+              className={`mt-4 px-4 py-2 rounded-md text-white ${spinning ? 'bg-gray-400 cursor-not-allowed' : 'bg-pink-500 hover:bg-pink-600 transform hover:scale-105 transition-transform'}`}
+            >
+              {spinning ? t.spinning : t.spinButton}
+            </button>
+            {reward && (
+              <p className="mt-4 text-lg text-pink-600">{t.rewardReceived.replace('{reward}', reward)}</p>
+            )}
+            {showModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+                <div className="bg-white p-6 rounded-lg shadow-lg text-center modal-enter modal-enter-active">
+                  <h2 className="text-xl font-bold text-pink-600">{t.congrats}</h2>
+                  <p className="mt-2 text-lg">{t.rewardReceived.replace('{reward}', modalReward)}</p>
+                  <button
+                    onClick={() => setShowModal(false)}
+                    className="mt-4 px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+                  >
+                    {t.close}
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="mt-4 flex flex-wrap justify-between gap-2">
+              <button
+                onClick={() => setPage('rewards')}
+                className="px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+              >
+                {t.rewardsPage}
+              </button>
+              <button
+                onClick={() => setPage('avatar')}
+                className="px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+              >
+                {t.avatarPage}
+              </button>
+              <button
+                onClick={() => setPage('community')}
+                className="px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+              >
+                {t.communityPage}
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      const RewardsPage = () => {
+        const redeem = (item) => {
+          const discountedPoints = happyHour ? Math.floor(item.points * 0.8) : item.points;
+          if (points >= discountedPoints) {
+            setPoints((prev) => prev - discountedPoints);
+            setRedeemedItem(item);
+            setShowRedeemModal(true);
+          } else {
+            setShowInsufficientModal(true);
+          }
+        };
+
+        return (
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full text-center font-sans relative">
+            <button
+              onClick={toggleLanguage}
+              className="absolute top-2 right-2 text-sm px-2 py-1 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+            >
+              {languageToggleText}
+            </button>
+            <h1 className="text-2xl font-bold mb-4 text-pink-600">{t.rewardsPage}</h1>
+            <p className="text-lg mb-4">{t.currentPoints}: {points}</p>
+            {happyHour && (
+              <div className="mb-4 p-2 bg-yellow-100 rounded-md">
+                <p className="text-lg font-bold text-pink-600">{t.happyHourDiscount}</p>
+                <p className="text-sm">{t.remainingTime}: {formatTime(happyHourTime)}</p>
+              </div>
+            )}
+            {t.rewardItems.map((item, index) => {
+              const discountedPoints = happyHour ? Math.floor(item.points * 0.8) : item.points;
+              return (
+                <div key={index} className="mb-4 p-4 bg-pink-50 rounded-md">
+                  <p className="text-lg">{item.name}</p>
+                  <p className="text-sm text-gray-600">
+                    {t.pointsNeeded
+                      .replace('{points}', discountedPoints)
+                      .replace('{happyHour}', happyHour ? t.happyHourOriginal.replace('{original}', item.points) : '')}
+                  </p>
+                  <button
+                    onClick={() => redeem(item)}
+                    className="mt-2 px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+                  >
+                    {t.redeem}
+                  </button>
+                </div>
+              );
+            })}
+            {showRedeemModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+                <div className="bg-white p-6 rounded-lg shadow-lg text-center modal-enter modal-enter-active">
+                  <h2 className="text-xl font-bold text-pink-600">{t.redeemed}</h2>
+                  <img src={rewardImage} alt="兌換獎勵" className="w-24 h-24 mx-auto my-4" />
+                  <p className="text-lg">{t.redeemedItem.replace('{item}', redeemedItem.name)}</p>
+                  <p className="text-sm text-gray-600">
+                    {t.sameReward.replace('{percent}', Math.floor(Math.random() * 20 + 70))}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {t.friendsRedeemed.replace('{count}', Math.floor(Math.random() * 5 + 1))}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                    <button
+                      onClick={() => setShowRedeemModal(false)}
+                      className="px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+                    >
+                      {t.close}
+                    </button>
+                    <button
+                      onClick={() => shareToLine(redeemedItem)}
+                      className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transform hover:scale-105 transition-transform"
+                    >
+                      {t.shareLine}
+                    </button>
+                    <button
+                      onClick={() => copyText(redeemedItem)}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transform hover:scale-105 transition-transform"
+                    >
+                      {t.copyText}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {showInsufficientModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+                <div className="bg-white p-6 rounded-lg shadow-lg text-center modal-enter modal-enter-active">
+                  <h2 className="text-xl font-bold text-pink-600">{t.insufficientPoints}</h2>
+                  <button
+                    onClick={() => setShowInsufficientModal(false)}
+                    className="mt-4 px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+                  >
+                    {t.close}
+                  </button>
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => setPage('home')}
+              className="mt-4 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transform hover:scale-105 transition-transform"
+            >
+              {t.backToHome}
+            </button>
+          </div>
+        );
+      };
+
+      const AvatarPage = () => {
+        const changeAvatar = (newAvatar) => {
+          setAvatar(newAvatar);
+          setShowAvatarModal(true);
+        };
+
+        return (
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full text-center font-sans relative">
+            <button
+              onClick={toggleLanguage}
+              className="absolute top-2 right-2 text-sm px-2 py-1 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+            >
+              {languageToggleText}
+            </button>
+            <h1 className="text-2xl font-bold mb-4 text-pink-600">{t.selectAvatar}</h1>
+            <div className="grid grid-cols-2 gap-4">
+              {avatars.map((avatar, index) => (
+                <div key={index} className="p-4 bg-pink-50 rounded-md">
+                  <img
+                    src={avatar.url}
+                    alt={language === 'zh-TW' ? avatar.name : avatar.nameEn}
+                    className="w-16 h-16 rounded-full mx-auto mb-2"
+                  />
+                  <p className="text-sm">{language === 'zh-TW' ? avatar.name : avatar.nameEn}</p>
+                  <button
+                    onClick={() => changeAvatar(avatar)}
+                    className="mt-2 px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+                  >
+                    {t.select}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {showAvatarModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+                <div className="bg-white p-6 rounded-lg shadow-lg text-center modal-enter modal-enter-active">
+                  <h2 className="text-xl font-bold text-pink-600">{t.congrats}</h2>
+                  <img
+                    src={avatar.url}
+                    alt={language === 'zh-TW' ? avatar.name : avatar.nameEn}
+                    className="w-24 h-24 mx-auto my-4 rounded-full"
+                  />
+                  <p className="text-lg">{language === 'zh-TW' ? '新造型已選好！' : 'New avatar selected!'}</p>
+                  <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                    <button
+                      onClick={() => {
+                        setShowAvatarModal(false);
+                        setPage('home');
+                      }}
+                      className="px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+                    >
+                      {t.close}
+                    </button>
+                    <button
+                      onClick={() => shareToLine(avatar, 'avatar')}
+                      className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transform hover:scale-105 transition-transform"
+                    >
+                      {t.shareAvatar}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => setPage('home')}
+              className="mt-4 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transform hover:scale-105 transition-transform"
+            >
+              {t.backToHome}
+            </button>
+          </div>
+        );
+      };
+
+      const CommunityPage = () => {
+        const [userMessage, setUserMessage] = useState('');
+        const [postedMessages, setPostedMessages] = useState(communityPosts);
+        const inputRef = useRef(null);
+
+        const handlePost = () => {
+          if (userMessage.trim()) {
+            const newPost = {
+              user: language === 'zh-TW' ? '你' : 'You',
+              userEn: 'You',
+              message: userMessage,
+              messageEn: userMessage,
+              id: Date.now()
+            };
+            setPostedMessages([newPost, ...postedMessages]);
+            setUserMessage('');
+            console.log('Posted:', newPost);
+            alert(t.postSuccess);
+            inputRef.current.focus(); // 提交後重新聚焦
+          } else {
+            alert(t.postEmpty);
+            inputRef.current.focus();
+          }
+        };
+
+        return (
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full text-center font-sans relative">
+            <button
+              onClick={toggleLanguage}
+              className="absolute top-2 right-2 text-sm px-2 py-1 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+            >
+              {languageToggleText}
+            </button>
+            <h1 className="text-2xl font-bold mb-4 text-pink-600">{t.communityPage}</h1>
+            <p className="text-lg mb-4">{t.communityHeader}</p>
+            <div className="mb-4 p-4 bg-pink-50 rounded-md">
+              <p className="text-sm mb-2">{t.communityPrompt}</p>
+              <input
+                ref={inputRef}
+                type="text"
+                value={userMessage}
+                onChange={(e) => {
+                  setUserMessage(e.target.value);
+                  console.log('Change Input:', e.target.value);
+                }}
+                onInput={(e) => {
+                  setUserMessage(e.target.value);
+                  console.log('Input Event:', e.target.value);
+                }}
+                onFocus={() => console.log('Input Focused')}
+                autoFocus
+                placeholder={language === 'zh-TW' ? '輸入你的分享...' : 'Enter your message...'}
+                className="community-input w-full p-2 rounded-md border border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-500"
+              />
+              <button
+                onClick={handlePost}
+                className="mt-2 px-4 py-2 bg-pink-500 text-white rounded-md hover:bg-pink-600 transform hover:scale-105 transition-transform"
+              >
+                {language === 'zh-TW' ? '分享' : 'Post'}
+              </button>
+            </div>
+            <div className="community-posts space-y-4">
+              {postedMessages.map((post) => (
+                <div key={post.id || post.message} className="p-4 bg-pink-50 rounded-md text-left flex items-start gap-2">
+                  <img
+                    src={avatars[Math.floor(Math.random() * avatars.length)].url}
+                    className="w-8 h-8 rounded-full"
+                  />
+                  <div>
+                    <p className="text-sm font-bold">{language === 'zh-TW' ? post.user : post.userEn}</p>
+                    <p className="text-sm">{language === 'zh-TW' ? post.message : post.messageEn} ☕</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setPage('home')}
+              className="mt-4 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transform hover:scale-105 transition-transform"
+            >
+              {t.backToHome}
+            </button>
+          </div>
+        );
+      };
+
+      return (
+        <div>
+          {page === 'home' && <HomePage />}
+          {page === 'rewards' && <RewardsPage />}
+          {page === 'avatar' && <AvatarPage />}
+          {page === 'community' && <CommunityPage />}
+        </div>
+      );
+    };
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
